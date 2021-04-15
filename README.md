@@ -4,9 +4,9 @@ Python project to predict playing cards on images in realtime. The Network is im
 
 To Do:
 
-[x] Script to generate synthetic data
-[ ] Keras implementation of Yolov3
-[ ] Card Detector
+- [x] Script to generate synthetic data
+- [ ] Keras implementation of Yolov3
+- [ ] Card Detector
 
 Resources:
 * Yolov3 : https://pjreddie.com/darknet/yolo/ 
