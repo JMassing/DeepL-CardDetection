@@ -7,6 +7,7 @@
 import argparse
 import os
 import random
+from enum import Enum
 
 import cv2 as cv
 import numpy as np
@@ -19,19 +20,26 @@ import pickle
 from card_extractor import FeatureDetector, ContourFilter, FilterType 
 
 class DataGenerator:
+    class AnnotationFormat(Enum):
+        pickle = 1
+        yolo = 2
+
     '''! 
     @brief Generates training data, i.e synthetic images with a size of 640x480 pixel, 
     bounding boxes and labels 
     '''
-    def __init__(self, pad_borders=(0, 0, 0, 0), pad_val=[0, 0, 0]):
+    def __init__(self, pad_borders=(0, 0, 0, 0), pad_val=[0, 0, 0], object_names_file = ""):
         '''!
         @brief Constructor
 
         @param pad_borders (tuple) Size of image padding borders (top, bottom, left, right)
         @param pad_val (list) BGR value of image padding color
+        @param object_names_file (string) relative path to obj.names file with yolo object names. Needed
+                                 to create yolov4 image annotations. 
+                                 See https://github.com/AlexeyAB/darknet#how-to-train-to-detect-your-custom-objects
         ''' 
         self.__card_size = (100, 140)
-        self.__background_size = (640, 480)
+        self.__background_size = (608, 608)
         self.__pad_val = pad_val
         self.__pad_borders = pad_borders
         self.__background = None
@@ -40,6 +48,7 @@ class DataGenerator:
         self.__augmented = []
         self.__bounding_boxes = []
         self.__labels = []
+        self.__object_names= object_names_file
 
     @property
     def background(self):
@@ -282,28 +291,78 @@ class DataGenerator:
         self.__train_image = np.where(mask, mask, self.__background)
        
         return
+    
+    def __get_annotation_dict(self, img_file):
+        '''! 
+        @brief Create annotations for image file
+        
+        @param img_file (str) Name of the associated image file
+        @return (dict) Image annotations.
+        '''
+         # convert bounding boxes to annotation dict and pickle
+        bb = []
+        for bbs in generator.bounding_boxes:
+            bb += [ {"x1" : bb.x1_int, "y1": bb.y1_int, "x2": bb.x2_int, "y2": bb.y2_int, 
+                     "x_center": bb.center_x, "y_center": bb.center_y,
+                     "height": bb.height, "width": bb.width, 
+                     "label": bb.label} for bb in bbs ]
+        annotation = { "image": img_file + ".jpg", 
+                       "shape": { "width": self.__background_size[0], "height": self.__background_size[1] },
+                       "bounding_boxes": bb }
+        return annotation
 
-    def write_data(self, path):
+    def __convert_to_yolo(self, annotations):
+        '''!
+        @brief Converts image annotations to yolo format
+
+        @param Annotations Annotation dict
+        '''
+        # Get object class mapping to yolo obj.names file
+        yolo_annotations = ""
+        mapping= {}
+        count = 0
+        with open(self.__object_names, 'r') as classes:
+            lines = classes.readlines()
+            for line in lines:
+                mapping[line.strip()] = count
+                count += 1
+
+        bounding_boxes = annotations["bounding_boxes"]
+        for bb in bounding_boxes:
+            label = mapping[ bb['label'] ]
+            height = bb['height'] / annotations['shape']['height']
+            width = bb['width'] / annotations['shape']['width']
+            x_center = bb['x_center'] / annotations['shape']['width']
+            y_center = bb['y_center'] / annotations['shape']['height']
+            yolo_annotations += f"{label} {x_center} {y_center} {width} {height}\n"
+        
+        return yolo_annotations
+
+    def write_data(self, path, nr = 1, annotation_format = AnnotationFormat.pickle):
         '''! 
         @brief Save training images as .jpg and pickle annotations 
         
         @param path (str) Path to save data
+        @param nr (int) File number
         '''
-        # filenames
-        img_file = f"image_{str(nr+1).zfill(5)}.jpg"
-        bb_file = f"image_{str(nr+1).zfill(5)}.pkl"
+        filename = f"image_{str(nr+1).zfill(5)}"
 
-        # convert bounding boxes to annotation dict and pickle
-        bb = []
-        for bbs in generator.bounding_boxes:
-            bb += [ {"x1" : bb.x1_int, "y1": bb.y1_int, "x2": bb.x2_int, 
-                     "y2": bb.y2_int, "label": bb.label} for bb in bbs ]
-        annotation = {"image": img_file, "bounding_boxes": bb}
-        with open(os.path.join(path, bb_file), 'wb') as output:
-            pickle.dump(annotation, output, -1)
+        annotation = self.__get_annotation_dict(filename)
+
+        if(annotation_format == self.AnnotationFormat.pickle):
+            with open(os.path.join(path, filename + ".pkl"), 'wb') as output:
+                pickle.dump(annotation, output, -1)
+        elif(annotation_format == self.AnnotationFormat.yolo):
+            with open(os.path.join(path, filename + ".txt"), 'w') as output:
+                output.write(self.__convert_to_yolo(annotation))
+        else:
+            pass
+        
+        self.__convert_to_yolo(annotation)
         
         # save training image
-        cv.imwrite(os.path.join(path, img_file), self.__train_image)
+        cv.imwrite(os.path.join(path, filename + ".jpg"), self.__train_image)
+        
 
     def clear(self):
         '''! Clear all images, bounding boxes and labels '''
@@ -326,13 +385,11 @@ args = parser.parse_args()
 
 if __name__ == "__main__":
 
-    generator = DataGenerator(pad_borders=(40, 40, 80, 80))
-    nr = 0
-    while nr < args.num_images:
+    obj_names_file = os.path.join("..", "Yolo", "cards.names")
+    generator = DataGenerator(pad_borders=(40, 40, 80, 80), object_names_file = obj_names_file)
+    for nr in range(args.num_images):
         generator.choose_random_background(args.backgrounds)
         generator.pick_random_cards(args.cards, args.num_cards)
         generator.generate_data()
-        generator.write_data(args.data)
-        generator.clear()
-        nr += 1  
-   
+        generator.write_data(args.data, nr, generator.AnnotationFormat.yolo)
+        generator.clear()   
