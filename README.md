@@ -5,7 +5,7 @@ Python project to predict playing cards on images in realtime using Yolov4. The 
 To Do:
 
 - [x] Script to generate synthetic data
-- [ ] Keras implementation of Yolov3
+- [x] Colab Notebook for Yolov4 training
 - [ ] Card Detector
 
 Resources:

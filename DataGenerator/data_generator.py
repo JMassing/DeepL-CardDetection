@@ -391,5 +391,5 @@ if __name__ == "__main__":
         generator.choose_random_background(args.backgrounds)
         generator.pick_random_cards(args.cards, args.num_cards)
         generator.generate_data()
-        generator.write_data(args.data, nr, generator.AnnotationFormat.yolo)
+        generator.write_data(args.data, nr, generator.AnnotationFormat.pickle)
         generator.clear()   
