@@ -11,7 +11,7 @@ class CardDetectorConan(ConanFile):
     ("opencv/4.1.1@conan/stable")
     ]
     default_options = {"opencv:shared": False}
-    exports_sources = "CMakeLists*"
+    exports_sources = "*"
     short_paths = True
 
     def source(self):
